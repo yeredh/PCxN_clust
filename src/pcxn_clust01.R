@@ -1,3 +1,4 @@
+
 rm(list=ls())
 options(stringsAsFactors = F)
 
@@ -36,6 +37,7 @@ pcxn_cor = pcxn2cormat(dat=pcxn_ad)
 hc_cor = hclust(d=dist(x=pcxn_cor,method="euclidean"), method="complete")
 
 # Heatmap
+pdf("output/heatmap_cor.pdf",height=6.5,width=8,pointsize = 17)
 hm_cor = Heatmap(
   matrix=pcxn_cor,cluster_rows = hc_cor,cluster_columns = hc_cor,name="PathCor",
   row_names_gp = gpar(fontsize = 7),
@@ -45,16 +47,19 @@ hm_cor = Heatmap(
   col = colorRamp2(c(min(pcxn_cor[lower.tri(pcxn_cor)]), 0, max(pcxn_cor[lower.tri(pcxn_cor)])), c("blue", "white", "red"))
 )
 draw(hm_cor,heatmap_legend_side = "left")
+dev.off()
 
 # Dendogram
+pdf("output/dendogram_cor.pdf",height=6,width=8,pointsize = 11)
 plot(as.phylo(hc_cor),cex=0.75,font=2)
-
+dev.off()
 
 # ==== Clustering: d=1-|PathCor| ====
 # complete, d= 1-|PathCor|
 hc_out = hclust(d=pcxn2dist(dat=pcxn_ad),method="complete")
 
 # Heatmap
+pdf("output/heatmap_dist.pdf",height=6.5,width=8,pointsize = 17)
 hm_dist = Heatmap(
   matrix=pcxn_cor,cluster_rows = hc_out,cluster_columns = hc_out,name="PathCor",
   row_names_gp = gpar(fontsize = 7),
@@ -64,10 +69,12 @@ hm_dist = Heatmap(
   col = colorRamp2(c(min(pcxn_cor[lower.tri(pcxn_cor)]), 0, max(pcxn_cor[lower.tri(pcxn_cor)])), c("blue", "white", "red"))
 )
 draw(hm_dist,heatmap_legend_side = "left")
+dev.off()
 
 # Dendogram
+pdf("output/dendogram_dist.pdf",height=6,width=8,pointsize = 11)
 plot(as.phylo(hc_out),cex=0.75,font=2)
-
+dev.off()
 
 
 
@@ -79,6 +86,7 @@ palette(brewer.pal(n=8, name="Dark2"))
 clustMember = cutree(hc_out, k=4)
 
 # Heatmap: assign color to clusters
+pdf("output/heatmap_dist_modules.pdf",height=6.5,width=8,pointsize = 17)
 hm_dist = Heatmap(
   matrix=pcxn_cor,
   cluster_rows = hc_out,
@@ -90,9 +98,12 @@ hm_dist = Heatmap(
   col = colorRamp2(c(min(pcxn_cor[lower.tri(pcxn_cor)]), 0, max(pcxn_cor[lower.tri(pcxn_cor)])), c("blue", "white", "red"))
 )
 draw(hm_dist,heatmap_legend_side = "left")
+dev.off()
 
 # Dendogram: assign color to clusters
+pdf("output/dendogram_dist_modules.pdf",height=6,width=8,pointsize = 11)
 plot(as.phylo(hc_out),cex=0.75,tip.col = clustMember,font=2)
+dev.off()
 
 library(igraph)
 library(plotrix)
@@ -114,6 +125,7 @@ col_pal = clustMember[names(V(g))]
 col_pal[!grepl("[a-zA-Z]+",col_pal)] = palette()[as.numeric(col_pal[!grepl("[a-zA-Z]+",col_pal)])]
 
 # plot graph
+pdf("output/graph_dist_modules.pdf",height=6,width=8,pointsize = 11)
 set.seed(6)
 my_lay = layout_with_fr(graph=g,weights=E(g)$D)
 plot(
@@ -129,3 +141,4 @@ plot(
   edge.color=ifelse(E(g)$PathCor >= 0,"forestgreen","red"),
   edge.width=rescale(abs(E(g)$PathCor),c(0,1))*2
 )
+dev.off()
