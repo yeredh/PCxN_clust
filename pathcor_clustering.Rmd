@@ -1,0 +1,223 @@
+---
+title: "Clustering with PathCor"
+author: "Yered Pita-Juarez"
+date: "03/21/17"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+```{r setup, include=FALSE,  echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+rm(list=ls())
+options(stringsAsFactors = F)
+
+# load function to transform correlations into distance matrix
+source("/Users/yeredh/Dropbox/PCxN_clust/src/pcxn_clust_functions.R")
+
+# ==== PCxN: CP ====
+# Data frame with pathway correlations for the Canonical Pathways
+pcxn = readRDS("/Users/yeredh/Dropbox/PCxN_clust/data/pathCor_CPv5.1_dframe.RDS")
+
+# Default filters:
+# p-value < 0.05 (significant correlation coefficients)
+pcxn = pcxn[pcxn$p.Adjust < 0.05,]
+# |PathCor| > 0.05 (pathway correlation magnitude)
+pcxn = pcxn[abs(pcxn$PathCor) > 0.05,]
+
+# ==== KEGG AD Top 10 neighbors ====
+# get top 10 neighbors of KEGG_ALZHEIMERS_DISEASE
+pcxn_ad=getTopNeighbors(path_name="KEGG_ALZHEIMERS_DISEASE",pcxn=pcxn,top_n=10)
+
+
+library(ape)
+library(rafalib)
+library(ComplexHeatmap)
+library(circlize)
+library(dendextend)
+library(RColorBrewer)
+library(igraph)
+library(plotrix)
+```
+
+
+The purpose of this document is to show a new approach to cluster the pathways by using the pathway correlation to define a distance. I believe that this approach emphasizes how closely related are pathways of interest and helps to interpret the results from PCxN.
+
+
+## Example
+
+For this document, I considered the top 10 neighbors of the `KEGG_ALZHEIMERS_DISEASE` from the canonical pathways gene set collection with the current default filters for the pathway coexpression network
+
+* A correlation magnitude higher than 0.05 $(|\text{PathCor}| > 0.05)$
+* Significant correlation coefficients $(p < 0.05)$
+
+
+## Clustering based on Correlation Coefficients
+
+In one of the previous implementation of the webtool, the clustering of the results was based on the correlation matrix. From the results from PCxN,
+
+* Construct a correlation matrix 
+* Compute a distance between all pathways of interest using the correlation matrix
+* Perform hierarchical clustering
+
+For this example, I used the default option in the `hclust` function in R (Euclidean distance and complete linkage to perform the hierarchical clustering).
+
+The current output is a heatmap, with the rows and columns ordered according to the clustering results.
+
+```{r heatmap_cor, echo=FALSE, fig.width=8, fig.height=6.5}
+# ==== Clustering: Correlation Matrix ====
+# get correlation matrix
+pcxn_cor = pcxn2cormat(dat=pcxn_ad)
+# Euclidean distance, complete method
+hc_cor = hclust(d=dist(x=pcxn_cor,method="euclidean"), method="complete")
+
+# Heatmap
+hm_cor = Heatmap(
+  matrix=pcxn_cor,cluster_rows = hc_cor,cluster_columns = hc_cor,name="PathCor",
+  row_names_gp = gpar(fontsize = 7),
+  column_names_gp = gpar(fontsize = 7),
+  row_names_max_width = unit(9, "cm"),
+  column_names_max_height = unit(9, "cm"),
+  col = colorRamp2(c(min(pcxn_cor[lower.tri(pcxn_cor)]), 0, max(pcxn_cor[lower.tri(pcxn_cor)])), c("blue", "white", "red"))
+)
+draw(hm_cor,heatmap_legend_side = "left")
+```
+
+
+I think the dendogram by itself is also a useful plot to include as part of the output
+
+```{r dendogram_cor, echo=FALSE, fig.width=6, fig.height=8}
+# Dendogram
+plot(as.phylo(hc_cor),cex=0.75,font=2)
+
+```
+
+## Defining a Distance
+
+We could use the actual correlation coefficients to define a distance. I propose the following
+
+$d = 1 - |\text{PathCor}|$
+
+Note that $0 \leq d \leq 1$, and
+
+* $d=0$, when two pathways are perfectly correlated ($\text{PathCor} = 1$ or $\text{PathCor} = -1$)
+* $d=1$, when $\text{PathCor}=0$
+
+Since the pathway correlation describes the relationships between pathways, this distance will be small for closely related (highly correlated) pathways and larger for unrelated (uncorrelated) pathways.
+
+## Clustering based on $d = 1 - |\text{PathCor}|$
+
+I clustered the top 10 neighbors of `KEGG_ALZHEIMERS_DISEASE` using the distance $d$ instead of the Euclidean distance applied on the correlation matrix
+
+* Construct a correlation matrix 
+* Calculated $d = 1 - |\text{PathCor}|$
+* Perform hierarchical clustering with $d$
+
+Below are the heatmap and dendogram for this approach.
+
+```{r heatmap_dist, echo=FALSE, fig.width=8, fig.height=6.5}
+# ==== Clustering: d=1-|PathCor| ====
+# complete, d= 1-|PathCor|
+hc_out = hclust(d=pcxn2dist(dat=pcxn_ad),method="complete")
+
+hm_dist = Heatmap(
+  matrix=pcxn_cor,cluster_rows = hc_out,cluster_columns = hc_out,name="PathCor",
+  row_names_gp = gpar(fontsize = 7),
+  column_names_gp = gpar(fontsize = 7),
+  row_names_max_width = unit(9, "cm"),
+  column_names_max_height = unit(9, "cm"),
+  col = colorRamp2(c(min(pcxn_cor[lower.tri(pcxn_cor)]), 0, max(pcxn_cor[lower.tri(pcxn_cor)])), c("blue", "white", "red"))
+)
+draw(hm_dist,heatmap_legend_side = "left")
+```
+
+```{r dendogram_dist, echo=FALSE, fig.width=6, fig.height=8}
+# Dendogram
+plot(as.phylo(hc_out),cex=0.75,font=2)
+```
+
+
+
+
+## Network Layout based on $d = 1 - |\text{PathCor}|$ 
+
+In order to illustrate how we could integrate the distance based on the pathway correlations into the network layout, I applied a cut-off to the hierarchical tree to define 4 modules, and colored the pathways accordingly. In this manner, we can see more clearly how the network layout relates to the distance $d$ and the clustering results.
+
+Below are the heatmap and the dendogram with the pathways colored according to their module membership.
+
+```{r heatmap_modules, echo=FALSE, fig.width=8, fig.height=6.5}
+palette(brewer.pal(n=8, name="Dark2"))
+# ==== Plots using d=1-|PathCor| ==== 
+# cut tree to define 4 clusters
+clustMember = cutree(hc_out, k=4)
+
+# Heatmap: assign color to clusters
+
+hm_dist = Heatmap(
+  matrix=pcxn_cor,
+  cluster_rows = hc_out,
+  cluster_columns = hc_out,name="PathCor",
+  row_names_gp = gpar(fontsize = 7,col=clustMember,font=2),
+  column_names_gp = gpar(fontsize = 7,col=clustMember,font=2),
+  row_names_max_width = unit(9, "cm"),
+  column_names_max_height = unit(9, "cm"),
+  col = colorRamp2(c(min(pcxn_cor[lower.tri(pcxn_cor)]), 0, max(pcxn_cor[lower.tri(pcxn_cor)])), c("blue", "white", "red"))
+)
+draw(hm_dist,heatmap_legend_side = "left")
+
+```
+
+```{r dendogram_modules, echo=FALSE, fig.width=6, fig.height=8}
+# Dendogram: assign color to clusters
+plot(as.phylo(hc_out),cex=0.75,tip.col = clustMember,font=2)
+```
+
+I used the Fruchterman-Reingold layout algorithm with $d$ as the edge weights. The node color matches the module membership, the edges are colored according to the sign of the correlation coefficients (green for positive, red for negative) and the edge width is proportional to the magnitude of the correlations. Incorporating the distance $d$ in the layout helps to emphasize the relationship between the pathways and complements the clustering results.
+
+
+
+```{r network_modules, echo=FALSE, fig.width=6, fig.height=8}
+# ==== Plot: Graph =====
+# plot network based on pathway correlations
+# - node color: matches the clusters from the hclust output
+# - edge color: green for PathCor >= 0, red for PathCor < 0
+# - edge width: proportional to |PathCor|
+# - layout: based on distance used in hierarchical clustering
+
+# estimate distance
+pcxn_ad$D = 1- abs(pcxn_ad$PathCor)
+# create graph
+g = graph_from_data_frame(d=pcxn_ad[,c("Pathway.A","Pathway.B","PathCor","D")],directed = F)
+
+
+# set up color palette for clusters
+col_pal = clustMember[names(V(g))]
+col_pal[!grepl("[a-zA-Z]+",col_pal)] = palette()[as.numeric(col_pal[!grepl("[a-zA-Z]+",col_pal)])]
+
+# plot graph
+set.seed(6)
+my_lay = layout_with_fr(graph=g,weights=E(g)$D)
+plot(
+  g,
+  layout=my_lay,
+  rescale=T,
+  vertex.color=col_pal,
+  vertex.label=gsub("_"," \n",names(V(g))),
+  vertex.label.cex=0.55,
+  vertex.label.font=2,
+  vertex.label.color="black",
+  vertex.frame.color=NA,
+  edge.color=ifelse(E(g)$PathCor >= 0,"forestgreen","red"),
+  edge.width=rescale(abs(E(g)$PathCor),c(0,1))*2
+)
+```
+
+
+## Final Remarks
+
+I have the following suggestions for the webtool
+
+- use $d = 1 - |\text{PathCor}|$ to cluster the pathways in the webtool
+- include a dendogram as part of the clustering results
+- use $d$ in one of the network layouts

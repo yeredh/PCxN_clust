@@ -1,6 +1,6 @@
 # Clustering with PathCor
 Yered Pita-Juarez  
-`r format(Sys.Date(), '%m/%d/%y')`  
+03/21/17  
 
 
 
